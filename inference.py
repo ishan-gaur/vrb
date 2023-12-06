@@ -51,11 +51,12 @@ def compute_heatmap(points, image_size, k_ratio=3.0):
     heatmap = heatmap.transpose()
     return heatmap
 
-def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=None): 
+def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=None, heatmap_cutoff=25): 
     assert isinstance(image_pil, Image.Image), "image_pil must be a PIL image"
     assert isinstance(objects, list), "objects must be a list of strings"
     assert overlap_thresh is None or 0 < overlap_thresh <= 1, "overlap_thresh must be in (0,1]"
     assert max_boxes is None or max_boxes > 0, "max_boxes must be greater than 0"
+    assert 0 <= heatmap_cutoff <= 255, "heatmap_cutoff must be in [0,255]"
 
     if objects is None:
         objects = ['cup', 'drawer', 'potlid', 'microwave']
@@ -155,10 +156,12 @@ def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=N
     
 
     original_img = np.asarray(image_pil)
+    # k_ratio sets the size of the gaussian kernel used to blur the heatmap
     hmap = compute_heatmap(np.vstack(contact_points), (original_img.shape[1],original_img.shape[0]), k_ratio = 6)
     hmap = (hmap * 255).astype(np.uint8)
+    hmap_mask = np.where(hmap > heatmap_cutoff, 1, 0).astype(np.uint8)
     hmap = cv2.applyColorMap(hmap, colormap=cv2.COLORMAP_JET)
-    overlay = (0.6*original_img +  0.4 *hmap).astype(np.uint8)
+    overlay = (0.6 * original_img +  0.4 * hmap * hmap_mask[:, :, None]).astype(np.uint8)
     plt.imshow(overlay)
     for i, cp in enumerate(contact_points):
         x2, y2, dx, dy = trajectories[i]
