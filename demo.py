@@ -7,6 +7,7 @@ from networks.model import VRBModel
 from networks.traj import TrajAffCVAE
 from inference import run_inference
 from PIL import Image
+from pathlib import Path
 
 def main(args):
     torch.cuda.manual_seed_all(args.manual_seed)
@@ -39,9 +40,17 @@ def main(args):
     net.load_state_dict(dt)
     net = net.cpu()
     image_pil = Image.open(args.image).convert("RGB")
-    image_pil = image_pil.resize((1008, 756))
-    im_out = run_inference(net, image_pil)
-    im_out.save('kitchen_out.png')
+    # image_pil = image_pil.resize((1008, 756))
+    object_list = []
+    with open(args.obj_list, 'r') as f:
+        for line in f.readlines():
+            object_list.append(line.strip())
+    print(object_list)
+    im_out = run_inference(net, image_pil, object_list)
+    if args.output is None:
+        args.output = os.path.splitext(args.image)[0] + '_out.png'
+        # output_path = Path(args.output)
+    im_out.save(args.output) 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -57,7 +66,9 @@ if __name__ == "__main__":
     parser.add_argument('--traj_len', type=int, default=5)
     parser.add_argument("--encoder_time_embed_type", default="sin",  choices=["sin", "param"], help="transformer encoder time position embedding")
     parser.add_argument("--manual_seed", default=0, type=int, help="manual seed")
-    parser.add_argument('--image', type=str, default='./kitchen.jpeg')
+    parser.add_argument('--image', type=str, required=True)
+    parser.add_argument('--output', type=str)
+    parser.add_argument('--obj_list', type=str, required=True)
     parser.add_argument('--model_path', type=str, default='./models/model_checkpoint_1249.pth.tar')
     args = parser.parse_args()
     

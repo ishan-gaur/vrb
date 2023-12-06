@@ -51,18 +51,49 @@ def compute_heatmap(points, image_size, k_ratio=3.0):
     heatmap = heatmap.transpose()
     return heatmap
 
-def run_inference(net, image_pil): 
-    objects = ['cup', 'drawer', 'potlid', 'microwave']
-    bboxes = []
+def run_inference(net, image_pil, objects=None): 
+    if objects is None:
+        objects = ['cup', 'drawer', 'potlid', 'microwave']
+    masks_list, bboxes, phrases_list, logits_list = [], [], [], []
     for obj in objects: 
         with torch.no_grad(): 
             masks, boxes, phrases, logits = model.predict(image_pil, obj)
-        bboxes.append(boxes)
+            # select the one with the highest logit
+            i = torch.argmax(logits)
+            mask, box, phrase, logit = masks[i], boxes[i], phrases[i], logits[i]
+        masks_list.append(mask)
+        bboxes.append(box)
+        phrases_list.append(phrase)
+        logits_list.append(logit)
+
+    assert len(bboxes) != 0, "No objects found in the image"
+
+    # go through the boxes, if any of the masks overlap by more than 0.5 of the smaller, remove the one with the lower logit
+    i, j = 0, 1
+    while i < len(masks_list) - 1:
+        if j > len(masks_list) - 1:
+            i += 1
+            j = i + 1
+            continue
+        print(i, j, len(masks_list) - 1)
+        if torch.sum(masks_list[i] * masks_list[j]) > 0.5 * min(torch.sum(masks_list[i]), torch.sum(masks_list[j])):
+            if logits_list[i] > logits_list[j]:
+                masks_list.pop(j)
+                bboxes.pop(j)
+                phrases_list.pop(j)
+                logits_list.pop(j)
+            else:
+                masks_list.pop(i)
+                bboxes.pop(i)
+                phrases_list.pop(i)
+                logits_list.pop(i)
+        j += 1
+
+    assert len(bboxes) != 0, "Filtering for overlap removed all objects"
 
     contact_points = []
     trajectories = []
-    for boxes in bboxes: 
-        box = boxes[0]
+    for box in bboxes: 
         y1, x1, y2, x2 = box
         bbox_offset = 20
         y1, x1, y2, x2 = int(y1) - bbox_offset, int(x1) - bbox_offset , int(y2) + bbox_offset, int(x2) + bbox_offset
