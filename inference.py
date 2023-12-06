@@ -51,7 +51,7 @@ def compute_heatmap(points, image_size, k_ratio=3.0):
     heatmap = heatmap.transpose()
     return heatmap
 
-def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=None, heatmap_cutoff=25): 
+def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=None, heatmap_cutoff=25, device=None): 
     assert isinstance(image_pil, Image.Image), "image_pil must be a PIL image"
     assert isinstance(objects, list), "objects must be a list of strings"
     assert overlap_thresh is None or 0 < overlap_thresh <= 1, "overlap_thresh must be in (0,1]"
@@ -137,6 +137,8 @@ def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=N
         trajs = []
         traj_scale = 0.1
         with torch.no_grad(): 
+            if device is not None:
+                inp_img = inp_img.to(device)
             ic, pc = net.inference(inp_img, None, None)
             pc = pc.cpu().numpy()
             ic = ic.cpu().numpy()
@@ -161,7 +163,8 @@ def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=N
     hmap = (hmap * 255).astype(np.uint8)
     hmap_mask = np.where(hmap > heatmap_cutoff, 1, 0).astype(np.uint8)
     hmap = cv2.applyColorMap(hmap, colormap=cv2.COLORMAP_JET)
-    overlay = (0.6 * original_img +  0.4 * hmap * hmap_mask[:, :, None]).astype(np.uint8)
+    overlay = (0.6 * original_img +  0.4 * hmap).astype(np.uint8) * hmap_mask[:, :, None]
+    overlay += (original_img * (1 - hmap_mask[:, :, None])).astype(np.uint8)
     plt.imshow(overlay)
     for i, cp in enumerate(contact_points):
         x2, y2, dx, dy = trajectories[i]

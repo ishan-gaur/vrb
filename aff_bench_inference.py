@@ -10,8 +10,13 @@ from PIL import Image
 from pathlib import Path
 
 def main(args):
-    torch.cuda.manual_seed_all(args.manual_seed)
-    torch.manual_seed(args.manual_seed)
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        torch.cuda.manual_seed_all(args.manual_seed)
+    else:
+        device = torch.device("cpu")
+        torch.manual_seed(args.manual_seed)
+    print(f"Using device: {device}")
     np.random.seed(args.manual_seed)
     random.seed(args.manual_seed)
 
@@ -36,9 +41,9 @@ def main(args):
                             num_heads=args.num_heads, enc_depth=args.enc_depth, 
                             attn_kp=args.attn_kp, attn_kp_fc=args.attn_kp_fc, n_maps=5)
 
-    dt = torch.load(args.model_path, map_location='cpu')
+    dt = torch.load(args.model_path, map_location=device)
     net.load_state_dict(dt)
-    net = net.cpu()
+    net = net.to(device)
     image_pil = Image.open(args.image).convert("RGB")
     # image_pil = image_pil.resize((1008, 756))
     object_list = []
@@ -46,7 +51,7 @@ def main(args):
         for line in f.readlines():
             object_list.append(line.strip())
     print(object_list)
-    im_out = run_inference(net, image_pil, object_list, args.overlap, args.max_box)
+    im_out = run_inference(net, image_pil, object_list, args.overlap, args.max_box, device=device)
     if args.output is None:
         args.output = os.path.splitext(args.image)[0] + '_out.png'
         # output_path = Path(args.output)
