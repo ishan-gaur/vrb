@@ -51,7 +51,12 @@ def compute_heatmap(points, image_size, k_ratio=3.0):
     heatmap = heatmap.transpose()
     return heatmap
 
-def run_inference(net, image_pil, objects=None): 
+def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=None): 
+    assert isinstance(image_pil, Image.Image), "image_pil must be a PIL image"
+    assert isinstance(objects, list), "objects must be a list of strings"
+    assert overlap_thresh is None or 0 < overlap_thresh <= 1, "overlap_thresh must be in (0,1]"
+    assert max_boxes is None or max_boxes > 0, "max_boxes must be greater than 0"
+
     if objects is None:
         objects = ['cup', 'drawer', 'potlid', 'microwave']
     masks_list, bboxes, phrases_list, logits_list = [], [], [], []
@@ -71,26 +76,37 @@ def run_inference(net, image_pil, objects=None):
     assert len(bboxes) != 0, "No objects found in the image"
 
     # go through the boxes, if any of the masks overlap by more than 0.5 of the smaller, remove the one with the lower logit
-    i, j = 0, 1
-    while i < len(masks_list) - 1:
-        if j > len(masks_list) - 1:
-            i += 1
-            j = i + 1
-            continue
-        if torch.sum(masks_list[i] * masks_list[j]) > 0.5 * min(torch.sum(masks_list[i]), torch.sum(masks_list[j])):
-            if logits_list[i] > logits_list[j]:
-                masks_list.pop(j)
-                bboxes.pop(j)
-                phrases_list.pop(j)
-                logits_list.pop(j)
-            else:
-                masks_list.pop(i)
-                bboxes.pop(i)
-                phrases_list.pop(i)
-                logits_list.pop(i)
-        j += 1
+    if not overlap_thresh is None:
+        i, j = 0, 1
+        while i < len(masks_list) - 1:
+            if j > len(masks_list) - 1:
+                i += 1
+                j = i + 1
+                continue
+            threshold = overlap_thresh * min(torch.sum(masks_list[i]), torch.sum(masks_list[j]))
+            if torch.sum(masks_list[i] * masks_list[j]) > threshold:
+                if logits_list[i] > logits_list[j]:
+                    masks_list.pop(j)
+                    bboxes.pop(j)
+                    phrases_list.pop(j)
+                    logits_list.pop(j)
+                else:
+                    masks_list.pop(i)
+                    bboxes.pop(i)
+                    phrases_list.pop(i)
+                    logits_list.pop(i)
+            j += 1
 
-    assert len(bboxes) != 0, "Filtering for overlap removed all objects"
+        assert len(bboxes) != 0, "Filtering for overlap removed all objects"
+    
+    if not max_boxes is None:
+        if len(bboxes) > max_boxes:
+            logits_list = torch.stack(logits_list)
+            _, idxs = torch.topk(logits_list, k=max_boxes, dim=0)
+            masks_list = [masks_list[i] for i in idxs]
+            bboxes = [bboxes[i] for i in idxs]
+            phrases_list = [phrases_list[i] for i in idxs]
+            logits_list = [logits_list[i] for i in idxs]
 
     contact_points = []
     trajectories = []
