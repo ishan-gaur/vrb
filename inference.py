@@ -59,6 +59,8 @@ def run_inference(net, image_pil, objects=None):
         with torch.no_grad(): 
             masks, boxes, phrases, logits = model.predict(image_pil, obj)
             # select the one with the highest logit
+            if len(logits) == 0:
+                continue
             i = torch.argmax(logits)
             mask, box, phrase, logit = masks[i], boxes[i], phrases[i], logits[i]
         masks_list.append(mask)
@@ -75,7 +77,6 @@ def run_inference(net, image_pil, objects=None):
             i += 1
             j = i + 1
             continue
-        print(i, j, len(masks_list) - 1)
         if torch.sum(masks_list[i] * masks_list[j]) > 0.5 * min(torch.sum(masks_list[i]), torch.sum(masks_list[j])):
             if logits_list[i] > logits_list[j]:
                 masks_list.pop(j)
