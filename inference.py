@@ -60,6 +60,7 @@ def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=N
 
     if objects is None:
         objects = ['cup', 'drawer', 'potlid', 'microwave']
+
     masks_list, bboxes, phrases_list, logits_list = [], [], [], []
     for obj in objects: 
         with torch.no_grad(): 
@@ -108,6 +109,8 @@ def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=N
             bboxes = [bboxes[i] for i in idxs]
             phrases_list = [phrases_list[i] for i in idxs]
             logits_list = [logits_list[i] for i in idxs]
+        
+    print("Bounding boxes max, actual", max_boxes, len(bboxes))
 
     contact_points = []
     trajectories = []
@@ -165,7 +168,11 @@ def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=N
     hmap = cv2.applyColorMap(hmap, colormap=cv2.COLORMAP_JET)
     overlay = (0.6 * original_img +  0.4 * hmap).astype(np.uint8) * hmap_mask[:, :, None]
     overlay += (original_img * (1 - hmap_mask[:, :, None])).astype(np.uint8)
+
+    plt.clf()
     plt.imshow(overlay)
+
+    print("# contact points: ", len(contact_points))
     for i, cp in enumerate(contact_points):
         x2, y2, dx, dy = trajectories[i]
         scale = 60/max(abs(dx), abs(dy))
@@ -178,4 +185,5 @@ def run_inference(net, image_pil, objects=None, overlap_thresh=None, max_boxes=N
     plt.tight_layout()
     plt.savefig(img_buf, format='png', bbox_inches='tight')
     im = Image.open(img_buf)
+    plt.close()
     return im

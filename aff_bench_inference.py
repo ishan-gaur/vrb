@@ -8,6 +8,8 @@ from networks.traj import TrajAffCVAE
 from inference import run_inference
 from PIL import Image
 from pathlib import Path
+from tqdm import tqdm
+import contextlib
 
 def main(args):
     if torch.cuda.is_available():
@@ -44,18 +46,31 @@ def main(args):
     dt = torch.load(args.model_path, map_location=device)
     net.load_state_dict(dt)
     net = net.to(device)
-    image_pil = Image.open(args.image).convert("RGB")
-    # image_pil = image_pil.resize((1008, 756))
+
     object_list = []
-    with open(args.obj_list, 'r') as f:
-        for line in f.readlines():
-            object_list.append(line.strip())
-    print(object_list)
-    im_out = run_inference(net, image_pil, object_list, args.overlap, args.max_box, device=device)
-    if args.output is None:
-        args.output = os.path.splitext(args.image)[0] + '_out.png'
-        # output_path = Path(args.output)
-    im_out.save(args.output) 
+    with open(args.obj_list, 'r') as obj_file:
+        for obj_line in obj_file.readlines():
+            object_list.append(obj_line.strip())
+
+    error_count = 0
+    with open(args.image_list, 'r') as f:
+        lines = f.readlines()
+        for line in tqdm(lines, desc="Running inference"):
+            image_path, output_path = line.strip().split(',')
+            image_pil = Image.open(image_path).convert("RGB")
+            try:
+                if args.debug:
+                    im_out = run_inference(net, image_pil, object_list, args.overlap, args.max_box, device=device)
+                else:
+                    with open(os.devnull, 'w') as devnull, contextlib.redirect_stdout(devnull):
+                        im_out = run_inference(net, image_pil, object_list, args.overlap, args.max_box, device=device)
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                error_count += 1
+            im_out.save(output_path)
+
+    print("All done!")
+    print(f"Number of incomplete images: {error_count}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -71,14 +86,12 @@ if __name__ == "__main__":
     parser.add_argument('--traj_len', type=int, default=5)
     parser.add_argument("--encoder_time_embed_type", default="sin",  choices=["sin", "param"], help="transformer encoder time position embedding")
     parser.add_argument("--manual_seed", default=0, type=int, help="manual seed")
-    parser.add_argument('--image', type=str, required=True)
-    parser.add_argument('--output', type=str)
+    parser.add_argument('--image_list', type=str, required=True, help='path to the file containing image paths and output locations')
     parser.add_argument('--obj_list', type=str, required=True)
     parser.add_argument('--overlap', type=int, default=0.5)
     parser.add_argument('--max_box', type=int, required=True)
     parser.add_argument('--model_path', type=str, default='./models/model_checkpoint_1249.pth.tar')
+    parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
-    
 
     main(args)
-    print("All done !")
